@@ -17,6 +17,7 @@ const (
 	FlannelIface     = "flannelIface"
 	CloudProvider    = "cloudprovider"
 	AWSCloudProvider = "aws"
+	GCECloudProvider = "gce"
 	RBACConfig       = "rbacConfig"
 	WeaveImage       = "weaveImage"
 	WeaveCNIImage    = "weaveCNIImage"

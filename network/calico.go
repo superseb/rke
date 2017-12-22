@@ -8,6 +8,11 @@ func GetCalicoManifest(calicoConfig map[string]string) string {
 		awsIPPool = getCalicoAWSIPPoolManifest(calicoConfig)
 	}
 
+	gceIPPool := ""
+	if calicoConfig[CloudProvider] == GCECloudProvider {
+		gceIPPool = getCalicoGCEIPPoolManifest(calicoConfig)
+	}
+
 	rbacConfig := ""
 	if calicoConfig[RBACConfig] == services.RBACAuthorizationMode {
 		rbacConfig = getCalicoRBACManifest()
@@ -408,6 +413,7 @@ metadata:
   name: calico-node
   namespace: kube-system
 ` + awsIPPool + `
+` + gceIPPool + `
 `
 }
 
@@ -456,6 +462,57 @@ spec:
       items:
         - key: aws-ippool
           path: aws-ippool.yaml
+        `
+}
+
+func getCalicoGCEIPPoolManifest(calicoConfig map[string]string) string {
+	return `
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: gce-ippool
+  namespace: kube-system
+data:
+  gce-ippool: |-
+    apiVersion: v1
+    kind: ipPool
+    metadata:
+      cidr: ` + calicoConfig[ClusterCIDR] + `
+    spec:
+      ipip:
+        enabled: true
+        mode: cross-subnet
+      nat-outgoing: true
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: calicoctl
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  restartPolicy: OnFailure
+  containers:
+  - name: calicoctl
+    image: ` + calicoConfig[CalicoctlImage] + `
+    command: ["/bin/sh", "-c", "calicoctl apply -f gce-ippool.yaml"]
+    env:
+    - name: ETCD_ENDPOINTS
+      valueFrom:
+        configMapKeyRef:
+          name: calico-config
+          key: etcd_endpoints
+    volumeMounts:
+    - name: ippool-config
+      mountPath: /root/
+  volumes:
+  - name: ippool-config
+    configMap:
+      name: gce-ippool
+      items:
+        - key: gce-ippool
+          path: gce-ippool.yaml
         `
 }
 
