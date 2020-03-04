@@ -30,6 +30,8 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -62,6 +64,7 @@ func NewPrivateKey() (*rsa.PrivateKey, error) {
 // NewSelfSignedCACert creates a CA certificate
 func NewSelfSignedCACert(cfg Config, key *rsa.PrivateKey) (*x509.Certificate, error) {
 	now := time.Now()
+	certMinutes := getCertDuration()
 	tmpl := x509.Certificate{
 		SerialNumber: new(big.Int).SetInt64(0),
 		Subject: pkix.Name{
@@ -69,7 +72,7 @@ func NewSelfSignedCACert(cfg Config, key *rsa.PrivateKey) (*x509.Certificate, er
 			Organization: cfg.Organization,
 		},
 		NotBefore:             now.UTC(),
-		NotAfter:              now.Add(duration365d * 10).UTC(),
+		NotAfter:              now.Add(certMinutes).UTC(),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -95,6 +98,8 @@ func NewSignedCert(cfg Config, key *rsa.PrivateKey, caCert *x509.Certificate, ca
 		return nil, errors.New("must specify at least one ExtKeyUsage")
 	}
 
+	certMinutes := getCertDuration()
+
 	certTmpl := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName:   cfg.CommonName,
@@ -104,7 +109,7 @@ func NewSignedCert(cfg Config, key *rsa.PrivateKey, caCert *x509.Certificate, ca
 		IPAddresses:  cfg.AltNames.IPs,
 		SerialNumber: serial,
 		NotBefore:    caCert.NotBefore,
-		NotAfter:     time.Now().Add(duration365d).UTC(),
+		NotAfter:     time.Now().Add(certMinutes).UTC(),
 		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  cfg.Usages,
 	}
@@ -143,13 +148,15 @@ func GenerateSelfSignedCertKey(host string, alternateIPs []net.IP, alternateDNS 
 		return nil, nil, err
 	}
 
+	certMinutes := getCertDuration()
+
 	caTemplate := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
 			CommonName: fmt.Sprintf("%s-ca@%d", host, time.Now().Unix()),
 		},
 		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(time.Hour * 24 * 365),
+		NotAfter:  time.Now().Add(certMinutes),
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		BasicConstraintsValid: true,
@@ -177,7 +184,7 @@ func GenerateSelfSignedCertKey(host string, alternateIPs []net.IP, alternateDNS 
 			CommonName: fmt.Sprintf("%s@%d", host, time.Now().Unix()),
 		},
 		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(time.Hour * 24 * 365),
+		NotAfter:  time.Now().Add(certMinutes),
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -242,4 +249,20 @@ func FormatCert(c *x509.Certificate) string {
 		res += fmt.Sprintf("\nAlternate Names: %v", altNames)
 	}
 	return res
+}
+
+func getCertDuration() time.Duration {
+	var minutes int
+	var err error
+	envMinutes := os.Getenv("RANCHER_CERT_EXPIRE_MINUTES")
+	if len(envMinutes) == 0 {
+		// 10 years
+		minutes = 5259492
+	} else {
+		minutes, err = strconv.Atoi(envMinutes)
+		if err != nil {
+			fmt.Printf("Unable to parse RANCHER_CERT_EXPIRE_MINUTES (%s) to int", envMinutes)
+		}
+	}
+	return time.Minute * time.Duration(minutes)
 }

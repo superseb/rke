@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -448,6 +449,7 @@ func newSignedCert(cfg cert.Config, key *rsa.PrivateKey, caCert *x509.Certificat
 	if len(cfg.Usages) == 0 {
 		return nil, errors.New("must specify at least one ExtKeyUsage")
 	}
+	certDays := getCertDuration()
 
 	certTmpl := x509.Certificate{
 		Subject: pkix.Name{
@@ -458,7 +460,7 @@ func newSignedCert(cfg cert.Config, key *rsa.PrivateKey, caCert *x509.Certificat
 		IPAddresses:  cfg.AltNames.IPs,
 		SerialNumber: serial,
 		NotBefore:    caCert.NotBefore,
-		NotAfter:     time.Now().Add(duration365d * 10).UTC(),
+		NotAfter:     time.Now().Add(certDays).UTC(),
 		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  cfg.Usages,
 	}
@@ -801,4 +803,20 @@ func IsKubeletGenerateServingCertificateEnabledinConfig(rkeConfig *v3.RancherKub
 		return true
 	}
 	return false
+}
+
+func getCertDuration() time.Duration {
+	var minutes int
+	var err error
+	envMinutes := os.Getenv("RANCHER_CERT_EXPIRE_MINUTES")
+	if len(envMinutes) == 0 {
+		// 10 years
+		minutes = 5259492
+	} else {
+		minutes, err = strconv.Atoi(envMinutes)
+		if err != nil {
+			fmt.Printf("Unable to parse RANCHER_CERT_EXPIRE_MINUTES (%s) to int", envMinutes)
+		}
+	}
+	return time.Minute * time.Duration(minutes)
 }
