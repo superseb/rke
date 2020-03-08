@@ -403,7 +403,6 @@ func GenerateEtcdCertificates(ctx context.Context, certs map[string]CertificateP
 		}
 		certs[etcdName] = ToCertObject(etcdName, "", "", etcdCrt, etcdKey, nil)
 	}
-	log.Debugf(ctx, "Checking and deleting unused etcd certificates, current etcd nodes are: %v", etcdHosts)
 	deleteUnusedCerts(ctx, certs, EtcdCertName, etcdHosts)
 	return nil
 }
@@ -518,7 +517,6 @@ func GenerateKubeletCertificate(ctx context.Context, certs map[string]Certificat
 		}
 		certs[kubeletName] = ToCertObject(kubeletName, "", "", kubeletCrt, kubeletKey, nil)
 	}
-	log.Debugf(ctx, "Checking and deleting unused kubelet certificates, current nodes are : %v", allHosts)
 	deleteUnusedCerts(ctx, certs, KubeletCertName, allHosts)
 	return nil
 }
@@ -602,15 +600,16 @@ func GenerateRKEServicesCSRs(ctx context.Context, certs map[string]CertificatePK
 	return nil
 }
 
-func deleteUnusedCerts(ctx context.Context, certs map[string]CertificatePKI, certName string, hosts []*hosts.Host) {
-	log.Infof(ctx, "[certificates] Checking and deleting unused %s certificates", certName)
+func deleteUnusedCerts(ctx context.Context, certs map[string]CertificatePKI, certName string, hostList []*hosts.Host) {
+	hostAddresses := hosts.GetInternalAddressForHosts(hostList)
+	log.Debugf(ctx, "Checking and deleting unused certificates with prefix [%s] for the following [%d] node(s): %s", certName, len(hostAddresses), strings.Join(hostAddresses, ","))
 	unusedCerts := make(map[string]bool)
 	for k := range certs {
 		if strings.HasPrefix(k, certName) {
 			unusedCerts[k] = true
 		}
 	}
-	for _, host := range hosts {
+	for _, host := range hostList {
 		Name := GetCrtNameForHost(host, certName)
 		delete(unusedCerts, Name)
 	}
