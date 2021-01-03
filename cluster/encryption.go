@@ -200,15 +200,15 @@ func (c *Cluster) RewriteSecrets(ctx context.Context) error {
 	// NOTE: since we retrieve secrets in batches, we don't know total number of secrets up front.
 	// Telling the user how many we've rewritten so far is the best we can do
 	done := make(chan struct{}, RewriteWorkers)
-	var numRewritten int
+	var numRetrieved int
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() { // track progress of secret rewrites
 		defer wg.Done()
 		for range done {
-			numRewritten++
-			if numRewritten%50 == 0 { // log a message every 50 secrets
-				log.Infof(ctx, "[%s] %v secrets rewritten", rewriteSecretsOperation, numRewritten)
+			numRetrieved++
+			if numRetrieved%50 == 0 { // log a message every 50 secrets
+				log.Infof(ctx, "[%s] %v secrets rewritten", rewriteSecretsOperation, numRetrieved)
 			}
 		}
 	}()
@@ -264,7 +264,7 @@ func (c *Cluster) RewriteSecrets(ctx context.Context) error {
 	if cliErr != nil {
 		log.Infof(ctx, "[%s] Operation encountered error: %v", rewriteSecretsOperation, cliErr)
 	} else {
-		log.Infof(ctx, "[%s] Operation completed, %v secrets rewritten", rewriteSecretsOperation, numRewritten)
+		log.Infof(ctx, "[%s] Operation completed, %d secrets rewritten, %d secrets did not exist anymore", rewriteSecretsOperation, len(rewritten), numRetrieved-len(rewritten))
 	}
 
 	return cliErr
@@ -461,6 +461,7 @@ func rewriteSecret(k8sClient *kubernetes.Clientset, secret *v1.Secret) error {
 		if err != nil {
 			// if the secret no longer exists, we can skip it since it does not need to be rewritten
 			if apierrors.IsNotFound(err) {
+				logrus.Warnf("[%s] Secret [%s] in namespace [%s] did no longer exist, skipping", rewriteSecretsOperation, secret.Name, secret.Namespace)
 				return nil
 			}
 			return err
